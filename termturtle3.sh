@@ -1,0 +1,976 @@
+#!/bin/bash
+
+# TermTurtle - Cross-Platform Intelligent Shell Front-End
+# Translates natural language intent into precise commands across all operating systems
+# Supports Linux, BSD, macOS, Windows (PowerShell/CMD), and more
+#
+# Author: TermTurtle Project
+# Version: 3.0.0 - Universal Edition
+# License: MIT
+
+set -euo pipefail
+
+# Colors and formatting
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly PURPLE='\033[0;35m'
+readonly CYAN='\033[0;36m'
+readonly WHITE='\033[1;37m'
+readonly BOLD='\033[1m'
+readonly DIM='\033[2m'
+readonly NC='\033[0m' # No Color
+
+# Configuration
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly CONFIG_FILE="${SCRIPT_DIR}/.termturtle_config"
+readonly HISTORY_FILE="${SCRIPT_DIR}/.termturtle_history"
+readonly COMMAND_DB="${SCRIPT_DIR}/termturtle_commands.json"
+
+# Global variables
+declare -g INTERACTIVE_MODE=true
+declare -g VERBOSE_MODE=false
+declare -g AUTO_EXECUTE=false
+declare -g LEARNING_MODE=true
+
+# Platform detection
+detect_platform() {
+    local os_type=""
+    local shell_type=""
+    local package_manager=""
+
+    # Detect operating system
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        os_type="linux"
+        if [[ -f /etc/debian_version ]]; then
+            package_manager="apt"
+        elif [[ -f /etc/redhat-release ]]; then
+            package_manager="yum"
+        elif [[ -f /etc/arch-release ]]; then
+            package_manager="pacman"
+        elif [[ -f /etc/alpine-release ]]; then
+            package_manager="apk"
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        os_type="macos"
+        package_manager="brew"
+    elif [[ "$OSTYPE" == "freebsd"* ]]; then
+        os_type="freebsd"
+        package_manager="pkg"
+    elif [[ "$OSTYPE" == "openbsd"* ]]; then
+        os_type="openbsd"
+        package_manager="pkg_add"
+    elif [[ "$OSTYPE" == "netbsd"* ]]; then
+        os_type="netbsd"
+        package_manager="pkgin"
+    elif [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]]; then
+        os_type="windows"
+        package_manager="choco"
+    elif [[ "$OSTYPE" == "win32" ]]; then
+        os_type="windows"
+        package_manager="winget"
+    else
+        os_type="unknown"
+    fi
+
+    # Detect shell environment
+    if [[ -n "${BASH_VERSION:-}" ]]; then
+        shell_type="bash"
+    elif [[ -n "${ZSH_VERSION:-}" ]]; then
+        shell_type="zsh"
+    elif [[ -n "${FISH_VERSION:-}" ]]; then
+        shell_type="fish"
+    elif command -v powershell &> /dev/null; then
+        shell_type="powershell"
+    elif [[ "$COMSPEC" == *"cmd.exe"* ]]; then
+        shell_type="cmd"
+    else
+        shell_type="sh"
+    fi
+
+    echo "{\"os\":\"$os_type\",\"shell\":\"$shell_type\",\"package_manager\":\"$package_manager\"}"
+}
+
+# Global platform info
+readonly PLATFORM_INFO=$(detect_platform)
+readonly OS_TYPE=$(echo "$PLATFORM_INFO" | jq -r '.os')
+readonly SHELL_TYPE=$(echo "$PLATFORM_INFO" | jq -r '.shell')
+readonly PACKAGE_MANAGER=$(echo "$PLATFORM_INFO" | jq -r '.package_manager')
+
+# Initialize command database
+init_command_db() {
+    if [[ ! -f "$COMMAND_DB" ]]; then
+        log_info "Initializing cross-platform command database..."
+        cat > "$COMMAND_DB" << 'EOF'
+{
+  "commands": [
+    {
+      "intent": ["scan network", "network scan", "discover hosts", "find devices"],
+      "platforms": {
+        "linux": "nmap -sn {network}",
+        "macos": "nmap -sn {network}",
+        "freebsd": "nmap -sn {network}",
+        "openbsd": "nmap -sn {network}",
+        "netbsd": "nmap -sn {network}",
+        "windows": "nmap -sn {network}"
+      },
+      "description": "Discover live hosts on network",
+      "category": "reconnaissance",
+      "risk": "low",
+      "params": ["network"],
+      "examples": ["nmap -sn 192.168.1.0/24"]
+    },
+    {
+      "intent": ["port scan", "scan ports", "check open ports"],
+      "platforms": {
+        "linux": "nmap -sS -O {target}",
+        "macos": "nmap -sS -O {target}",
+        "freebsd": "nmap -sS -O {target}",
+        "openbsd": "nmap -sS -O {target}",
+        "netbsd": "nmap -sS -O {target}",
+        "windows": "nmap -sS -O {target}"
+      },
+      "description": "TCP SYN scan with OS detection",
+      "category": "reconnaissance",
+      "risk": "medium",
+      "params": ["target"],
+      "examples": ["nmap -sS -O 192.168.1.100"]
+    },
+    {
+      "intent": ["list files", "show files", "directory listing"],
+      "platforms": {
+        "linux": "ls -la {path}",
+        "macos": "ls -la {path}",
+        "freebsd": "ls -la {path}",
+        "openbsd": "ls -la {path}",
+        "netbsd": "ls -la {path}",
+        "windows": "dir {path} /a"
+      },
+      "description": "List directory contents with details",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["path"],
+      "examples": ["ls -la /home", "dir C:\\Users /a"]
+    },
+    {
+      "intent": ["check listening ports", "show open ports", "netstat ports"],
+      "platforms": {
+        "linux": "ss -tulpn",
+        "macos": "netstat -tulpn",
+        "freebsd": "netstat -tulpn",
+        "openbsd": "netstat -tulpn",
+        "netbsd": "netstat -tulpn",
+        "windows": "netstat -an"
+      },
+      "description": "Show listening ports and processes",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["ss -tulpn", "netstat -an"]
+    },
+    {
+      "intent": ["monitor network traffic", "capture packets", "sniff traffic"],
+      "platforms": {
+        "linux": "tcpdump -i {interface} -w {output}.pcap",
+        "macos": "tcpdump -i {interface} -w {output}.pcap",
+        "freebsd": "tcpdump -i {interface} -w {output}.pcap",
+        "openbsd": "tcpdump -i {interface} -w {output}.pcap",
+        "netbsd": "tcpdump -i {interface} -w {output}.pcap",
+        "windows": "netsh trace start capture=yes tracefile={output}.etl"
+      },
+      "description": "Capture network packets to file",
+      "category": "monitoring",
+      "risk": "medium",
+      "params": ["interface", "output"],
+      "examples": ["tcpdump -i eth0 -w capture.pcap", "netsh trace start capture=yes"]
+    },
+    {
+      "intent": ["find files", "search files", "locate file"],
+      "platforms": {
+        "linux": "find {path} -name '*{pattern}*' -type f",
+        "macos": "find {path} -name '*{pattern}*' -type f",
+        "freebsd": "find {path} -name '*{pattern}*' -type f",
+        "openbsd": "find {path} -name '*{pattern}*' -type f",
+        "netbsd": "find {path} -name '*{pattern}*' -type f",
+        "windows": "forfiles /p {path} /m *{pattern}* /c \"cmd /c echo @path\""
+      },
+      "description": "Search for files by name pattern",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["path", "pattern"],
+      "examples": ["find /home -name '*.log' -type f", "forfiles /p C:\\logs /m *.log"]
+    },
+    {
+      "intent": ["check disk usage", "disk space", "df"],
+      "platforms": {
+        "linux": "df -h",
+        "macos": "df -h",
+        "freebsd": "df -h",
+        "openbsd": "df -h",
+        "netbsd": "df -h",
+        "windows": "wmic logicaldisk get size,freespace,caption"
+      },
+      "description": "Show filesystem disk space usage",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["df -h", "wmic logicaldisk get size,freespace,caption"]
+    },
+    {
+      "intent": ["show processes", "list processes", "ps"],
+      "platforms": {
+        "linux": "ps aux --sort=-%cpu | head -20",
+        "macos": "ps aux | sort -k3 -nr | head -20",
+        "freebsd": "ps aux | sort -k3 -nr | head -20",
+        "openbsd": "ps aux | sort -k3 -nr | head -20",
+        "netbsd": "ps aux | sort -k3 -nr | head -20",
+        "windows": "tasklist /fo table | sort /r /+5"
+      },
+      "description": "Show top CPU-consuming processes",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["ps aux --sort=-%cpu", "tasklist /fo table"]
+    },
+    {
+      "intent": ["install package", "install software", "add package"],
+      "platforms": {
+        "linux": "{package_manager} install {package}",
+        "macos": "brew install {package}",
+        "freebsd": "pkg install {package}",
+        "openbsd": "pkg_add {package}",
+        "netbsd": "pkgin install {package}",
+        "windows": "winget install {package}"
+      },
+      "description": "Install software package",
+      "category": "system",
+      "risk": "medium",
+      "params": ["package"],
+      "examples": ["apt install vim", "brew install vim", "winget install vim"]
+    },
+    {
+      "intent": ["update system", "upgrade packages", "system update"],
+      "platforms": {
+        "linux": "{package_manager} update && {package_manager} upgrade",
+        "macos": "brew update && brew upgrade",
+        "freebsd": "pkg update && pkg upgrade",
+        "openbsd": "pkg_add -u",
+        "netbsd": "pkgin update && pkgin upgrade",
+        "windows": "winget upgrade --all"
+      },
+      "description": "Update system packages",
+      "category": "system",
+      "risk": "medium",
+      "params": [],
+      "examples": ["apt update && apt upgrade", "winget upgrade --all"]
+    },
+    {
+      "intent": ["check system info", "system information", "hardware info"],
+      "platforms": {
+        "linux": "uname -a && lscpu && free -h",
+        "macos": "system_profiler SPHardwareDataType",
+        "freebsd": "uname -a && sysctl hw",
+        "openbsd": "uname -a && sysctl hw",
+        "netbsd": "uname -a && sysctl hw",
+        "windows": "systeminfo"
+      },
+      "description": "Display system and hardware information",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["uname -a && lscpu", "systeminfo"]
+    },
+    {
+      "intent": ["check network config", "network configuration", "ip config"],
+      "platforms": {
+        "linux": "ip addr show",
+        "macos": "ifconfig",
+        "freebsd": "ifconfig",
+        "openbsd": "ifconfig",
+        "netbsd": "ifconfig",
+        "windows": "ipconfig /all"
+      },
+      "description": "Show network interface configuration",
+      "category": "network",
+      "risk": "low",
+      "params": [],
+      "examples": ["ip addr show", "ipconfig /all"]
+    },
+    {
+      "intent": ["ping host", "test connectivity", "ping test"],
+      "platforms": {
+        "linux": "ping -c 4 {target}",
+        "macos": "ping -c 4 {target}",
+        "freebsd": "ping -c 4 {target}",
+        "openbsd": "ping -c 4 {target}",
+        "netbsd": "ping -c 4 {target}",
+        "windows": "ping -n 4 {target}"
+      },
+      "description": "Test network connectivity to host",
+      "category": "network",
+      "risk": "low",
+      "params": ["target"],
+      "examples": ["ping -c 4 google.com", "ping -n 4 google.com"]
+    },
+    {
+      "intent": ["check firewall", "firewall status", "show firewall"],
+      "platforms": {
+        "linux": "ufw status verbose || iptables -L",
+        "macos": "pfctl -sr",
+        "freebsd": "pfctl -sr",
+        "openbsd": "pfctl -sr",
+        "netbsd": "pfctl -sr",
+        "windows": "netsh advfirewall show allprofiles"
+      },
+      "description": "Show firewall configuration and status",
+      "category": "security",
+      "risk": "low",
+      "params": [],
+      "examples": ["ufw status verbose", "netsh advfirewall show allprofiles"]
+    },
+    {
+      "intent": ["check logs", "view logs", "system logs"],
+      "platforms": {
+        "linux": "journalctl --since '{timeframe}' 2>/dev/null || tail -n {timeframe} /var/log/syslog",
+        "macos": "log show --last {timeframe}",
+        "freebsd": "tail -n {timeframe} /var/log/messages",
+        "openbsd": "tail -n {timeframe} /var/log/messages",
+        "netbsd": "tail -n {timeframe} /var/log/messages",
+        "windows": "powershell -Command \"Get-EventLog -LogName System -Newest {timeframe}\""
+      },
+      "description": "View system logs and events",
+      "category": "monitoring",
+      "risk": "low",
+      "params": ["timeframe"],
+      "examples": ["journalctl --since '1 hour ago'", "log show --last 1h", "Get-EventLog -LogName System -Newest 50"]
+    },
+    {
+      "intent": ["compress files", "create archive", "zip files"],
+      "platforms": {
+        "linux": "tar -czf {output}.tar.gz {path}",
+        "macos": "tar -czf {output}.tar.gz {path}",
+        "freebsd": "tar -czf {output}.tar.gz {path}",
+        "openbsd": "tar -czf {output}.tar.gz {path}",
+        "netbsd": "tar -czf {output}.tar.gz {path}",
+        "windows": "powershell -Command \"Compress-Archive -Path {path} -DestinationPath {output}.zip\""
+      },
+      "description": "Create compressed archive of files",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["path", "output"],
+      "examples": ["tar -czf backup.tar.gz /home/user", "Compress-Archive -Path C:\\Data"]
+    },
+    {
+      "intent": ["extract archive", "decompress files", "unzip files"],
+      "platforms": {
+        "linux": "tar -xzf {archive}",
+        "macos": "tar -xzf {archive}",
+        "freebsd": "tar -xzf {archive}",
+        "openbsd": "tar -xzf {archive}",
+        "netbsd": "tar -xzf {archive}",
+        "windows": "powershell -Command \"Expand-Archive -Path {archive} -DestinationPath .\""
+      },
+      "description": "Extract compressed archive",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["archive"],
+      "examples": ["tar -xzf backup.tar.gz", "Expand-Archive -Path backup.zip"]
+    },
+    {
+      "intent": ["kill process", "terminate process", "stop process"],
+      "platforms": {
+        "linux": "kill -9 {pid}",
+        "macos": "kill -9 {pid}",
+        "freebsd": "kill -9 {pid}",
+        "openbsd": "kill -9 {pid}",
+        "netbsd": "kill -9 {pid}",
+        "windows": "taskkill /PID {pid} /F"
+      },
+      "description": "Forcefully terminate a process",
+      "category": "system",
+      "risk": "high",
+      "params": ["pid"],
+      "examples": ["kill -9 1234", "taskkill /PID 1234 /F"]
+    },
+    {
+      "intent": ["check memory usage", "memory info", "ram usage"],
+      "platforms": {
+        "linux": "free -h && cat /proc/meminfo",
+        "macos": "vm_stat && top -l 1 | grep PhysMem",
+        "freebsd": "vmstat -h && sysctl hw.physmem",
+        "openbsd": "vmstat && sysctl hw.physmem",
+        "netbsd": "vmstat && sysctl hw.physmem64",
+        "windows": "wmic OS get TotalVisibleMemorySize,FreePhysicalMemory /format:list"
+      },
+      "description": "Display memory usage information",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["free -h", "wmic OS get TotalVisibleMemorySize"]
+    },
+    {
+      "intent": ["check cpu usage", "cpu info", "processor info"],
+      "platforms": {
+        "linux": "lscpu && top -bn1 | grep 'Cpu(s)'",
+        "macos": "sysctl -n machdep.cpu.brand_string && top -l 1 | grep 'CPU usage'",
+        "freebsd": "sysctl hw.model && top -d1 | head -20",
+        "openbsd": "sysctl hw.model && top -d1 | head -20",
+        "netbsd": "sysctl hw.model && top -d1 | head -20",
+        "windows": "wmic cpu get name,numberofcores,maxclockspeed /format:list"
+      },
+      "description": "Display CPU information and usage",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["lscpu", "wmic cpu get name,numberofcores"]
+    }
+  ]
+}
+EOF
+        log_success "Cross-platform command database initialized"
+    fi
+}
+
+# Parse natural language input
+parse_intent() {
+    local input="$1"
+    local best_match=""
+    local best_score=0
+    local matched_command=""
+
+    # Convert input to lowercase for matching
+    input=$(echo "$input" | tr '[:upper:]' '[:lower:]')
+
+    # Parse JSON and find best match
+    while IFS= read -r line; do
+        local intent_array=$(echo "$line" | jq -r '.intent[]')
+        local platforms=$(echo "$line" | jq -c '.platforms')
+        local description=$(echo "$line" | jq -r '.description')
+        local category=$(echo "$line" | jq -r '.category')
+        local risk=$(echo "$line" | jq -r '.risk')
+
+        # Check if command exists for current platform
+        local platform_command=$(echo "$platforms" | jq -r --arg os "$OS_TYPE" '.[$os] // empty')
+        if [[ -z "$platform_command" ]]; then
+            continue
+        fi
+
+        # Calculate match score based on word overlap
+        local score=0
+        while IFS= read -r intent; do
+            if [[ -z "$intent" ]]; then continue; fi
+            local count=0
+            for word in $intent; do
+                if echo "$input" | grep -qw "$word"; then
+                    count=$((count + 1))
+                fi
+            done
+            if [[ $count -gt $score ]]; then
+                score=$count
+            fi
+        done <<< "$intent_array"
+
+        if [[ $score -gt $best_score ]]; then
+            best_score=$score
+            best_match="$line"
+            matched_command="$platform_command"
+        fi
+    done < <(jq -c '.commands[]' "$COMMAND_DB")
+
+    if [[ $best_score -gt 0 ]]; then
+        echo "$best_match"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Extract parameters from user input
+extract_parameters() {
+    local input="$1"
+    local command_template="$2"
+    local params_json="$3"
+
+    local final_command="$command_template"
+
+    # Replace package manager placeholder
+    final_command="${final_command//\{package_manager\}/$PACKAGE_MANAGER}"
+
+    # Extract parameters based on common patterns
+    while IFS= read -r param; do
+        case "$param" in
+            "network")
+                if [[ "$input" =~ ([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}) ]]; then
+                    final_command="${final_command//\{network\}/${BASH_REMATCH[1]}}"
+                else
+                    final_command="${final_command//\{network\}/192.168.1.0\/24}"
+                fi
+                ;;
+            "target")
+                if [[ "$input" =~ ([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}) ]]; then
+                    final_command="${final_command//\{target\}/${BASH_REMATCH[1]}}"
+                elif [[ "$input" =~ ([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}) ]]; then
+                    final_command="${final_command//\{target\}/${BASH_REMATCH[1]}}"
+                else
+                    read -p "Enter target IP/hostname: " target
+                    final_command="${final_command//\{target\}/$target}"
+                fi
+                ;;
+            "interface")
+                case "$OS_TYPE" in
+                    "linux"|"freebsd"|"openbsd"|"netbsd")
+                        if [[ "$input" =~ (eth[0-9]+|wlan[0-9]+|enp[0-9]+s[0-9]+|em[0-9]+|re[0-9]+) ]]; then
+                            final_command="${final_command//\{interface\}/${BASH_REMATCH[1]}}"
+                        else
+                            final_command="${final_command//\{interface\}/eth0}"
+                        fi
+                        ;;
+                    "macos")
+                        if [[ "$input" =~ (en[0-9]+|wi-fi|ethernet) ]]; then
+                            final_command="${final_command//\{interface\}/${BASH_REMATCH[1]}}"
+                        else
+                            final_command="${final_command//\{interface\}/en0}"
+                        fi
+                        ;;
+                    "windows")
+                        final_command="${final_command//\{interface\}/\"Local Area Connection\"}"
+                        ;;
+                esac
+                ;;
+            "path")
+                case "$OS_TYPE" in
+                    "windows")
+                        if [[ "$input" =~ ([C-Z]:\\[^[:space:]]*) ]]; then
+                            final_command="${final_command//\{path\}/${BASH_REMATCH[1]}}"
+                        else
+                            final_command="${final_command//\{path\}/C:\\Users}"
+                        fi
+                        ;;
+                    *)
+                        if [[ "$input" =~ (/[a-zA-Z0-9/_.-]*) ]]; then
+                            final_command="${final_command//\{path\}/${BASH_REMATCH[1]}}"
+                        else
+                            final_command="${final_command//\{path\}/\$HOME}"
+                        fi
+                        ;;
+                esac
+                ;;
+            "pattern")
+                if [[ "$input" =~ \*([a-zA-Z0-9._-]+)\* ]]; then
+                    final_command="${final_command//\{pattern\}/${BASH_REMATCH[1]}}"
+                elif [[ "$input" =~ \"([^\"]+)\" ]]; then
+                    final_command="${final_command//\{pattern\}/${BASH_REMATCH[1]}}"
+                else
+                    read -p "Enter search pattern: " pattern
+                    final_command="${final_command//\{pattern\}/$pattern}"
+                fi
+                ;;
+            "package")
+                if [[ "$input" =~ (install|add)[[:space:]]+([a-zA-Z0-9._-]+) ]]; then
+                    final_command="${final_command//\{package\}/${BASH_REMATCH[2]}}"
+                else
+                    read -p "Enter package name: " package
+                    final_command="${final_command//\{package\}/$package}"
+                fi
+                ;;
+            "pid")
+                if [[ "$input" =~ ([0-9]+) ]]; then
+                    final_command="${final_command//\{pid\}/${BASH_REMATCH[1]}}"
+                else
+                    read -p "Enter process ID: " pid
+                    final_command="${final_command//\{pid\}/$pid}"
+                fi
+                ;;
+            "output")
+                local timestamp=$(date +%Y%m%d_%H%M%S)
+                case "$OS_TYPE" in
+                    "windows")
+                        final_command="${final_command//\{output\}/capture_$timestamp}"
+                        ;;
+                    *)
+                        final_command="${final_command//\{output\}/capture_$timestamp}"
+                        ;;
+                esac
+                ;;
+            "archive")
+                case "$OS_TYPE" in
+                    "windows")
+                        if [[ "$input" =~ ([^[:space:]]+\.zip) ]]; then
+                            final_command="${final_command//\{archive\}/${BASH_REMATCH[1]}}"
+                        else
+                            read -p "Enter archive path: " archive
+                            final_command="${final_command//\{archive\}/$archive}"
+                        fi
+                        ;;
+                    *)
+                        if [[ "$input" =~ ([^[:space:]]+\.(tar\.gz|tgz|tar\.bz2|tar\.xz)) ]]; then
+                            final_command="${final_command//\{archive\}/${BASH_REMATCH[1]}}"
+                        else
+                            read -p "Enter archive path: " archive
+                            final_command="${final_command//\{archive\}/$archive}"
+                        fi
+                        ;;
+                esac
+                ;;
+            "timeframe")
+                local num="1"
+                local raw_unit="hour"
+                if [[ "$input" =~ last[[:space:]]+([0-9]+)[[:space:]]+(hour|minute|day)(s?) ]]; then
+                    num="${BASH_REMATCH[1]}"
+                    raw_unit="${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
+                fi
+                local ago_unit="${raw_unit,,}"
+                local unit="h"
+                case "${ago_unit}" in
+                    hour|hours) ago_unit="hour"; unit="h" ;;
+                    minute|minutes) ago_unit="minute"; unit="m" ;;
+                    day|days) ago_unit="day"; unit="d" ;;
+                    *) ago_unit="hour"; unit="h" ;;
+                esac
+                if [[ $num -gt 1 ]]; then
+                    case $ago_unit in
+                        hour) ago_unit="hours" ;;
+                        minute) ago_unit="minutes" ;;
+                        day) ago_unit="days" ;;
+                    esac
+                fi
+                local multiplier=100
+                local event_mult=50
+                case "${raw_unit,,}" in
+                    hour|hours) multiplier=100; event_mult=50 ;;
+                    minute|minutes) multiplier=2; event_mult=1 ;;
+                    day|days) multiplier=2400; event_mult=1200 ;;
+                esac
+                case "$OS_TYPE" in
+                    "linux")
+                        local timeframe="${num} ${ago_unit} ago"
+                        ;;
+                    "macos")
+                        local timeframe="${num}${unit}"
+                        ;;
+                    "freebsd"|"openbsd"|"netbsd")
+                        local lines=$((num * multiplier))
+                        local timeframe="$lines"
+                        ;;
+                    "windows")
+                        local events=$((num * event_mult))
+                        local timeframe="$events"
+                        ;;
+                    *)
+                        local timeframe="1h"
+                        ;;
+                esac
+                final_command="${final_command//\{timeframe\}/$timeframe}"
+                ;;
+        esac
+    done < <(echo "$params_json" | jq -r '.[]')
+
+    echo "$final_command"
+}
+
+# Display command with syntax highlighting
+display_command() {
+    local command="$1"
+    local description="$2"
+    local category="$3"
+    local risk="$4"
+
+    echo -e "\n${BOLD}${WHITE}╭─ Command Match Found${NC}"
+    echo -e "${BOLD}${WHITE}│${NC}"
+    echo -e "${BOLD}${WHITE}├─ Platform:${NC} ${CYAN}$OS_TYPE${NC} (${DIM}$SHELL_TYPE shell${NC})"
+    echo -e "${BOLD}${WHITE}├─ Description:${NC} ${CYAN}$description${NC}"
+    echo -e "${BOLD}${WHITE}├─ Category:${NC} ${PURPLE}$category${NC}"
+
+    # Risk color coding
+    local risk_color="$GREEN"
+    [[ "$risk" == "medium" ]] && risk_color="$YELLOW"
+    [[ "$risk" == "high" ]] && risk_color="$RED"
+
+    echo -e "${BOLD}${WHITE}├─ Risk Level:${NC} ${risk_color}$risk${NC}"
+    echo -e "${BOLD}${WHITE}│${NC}"
+    echo -e "${BOLD}${WHITE}├─ Command:${NC}"
+    echo -e "${BOLD}${WHITE}│${NC}   ${GREEN}$command${NC}"
+    echo -e "${BOLD}${WHITE}╰─${NC}"
+}
+
+# Execute command with confirmation
+execute_command() {
+    local command="$1"
+    local risk="$2"
+
+    if [[ "$AUTO_EXECUTE" == "true" ]]; then
+        log_info "Auto-executing command..."
+        eval "$command"
+        return $?
+    fi
+
+    echo -e "\n${YELLOW}Execute this command? ${NC}"
+    echo -e "${DIM}[y]es / [n]o / [c]opy to clipboard / [e]dit${NC}"
+
+    read -n 1 -r response
+    echo
+
+    case "$response" in
+        y|Y)
+            log_info "Executing command..."
+            echo -e "${DIM}$ $command${NC}"
+            eval "$command"
+            local exit_code=$?
+            if [[ $exit_code -eq 0 ]]; then
+                log_success "Command completed successfully"
+            else
+                log_error "Command failed with exit code $exit_code"
+            fi
+            return $exit_code
+            ;;
+        c|C)
+            echo -n "$command" | xclip -selection clipboard 2>/dev/null || \
+            echo -n "$command" | pbcopy 2>/dev/null || \
+            log_warn "Could not copy to clipboard (xclip/pbcopy not available)"
+            log_info "Command copied to clipboard"
+            ;;
+        e|E)
+            echo -e "${CYAN}Edit command:${NC}"
+            read -e -i "$command" edited_command
+            if [[ -n "$edited_command" ]]; then
+                execute_command "$edited_command" "$risk"
+            fi
+            ;;
+        *)
+            log_info "Command execution cancelled"
+            ;;
+    esac
+}
+
+# Add command to history
+add_to_history() {
+    local input="$1"
+    local command="$2"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') | $input | $command" >> "$HISTORY_FILE"
+}
+
+# Show usage help
+show_help() {
+    echo -e "${BOLD}${WHITE}TermTurtle - Cross-Platform Intelligent Shell Front-End${NC}\n"
+    echo -e "${CYAN}USAGE:${NC}"
+    echo -e "  $0 [OPTIONS] [QUERY]"
+    echo -e ""
+    echo -e "${CYAN}OPTIONS:${NC}"
+    echo -e "  -h, --help          Show this help message"
+    echo -e "  -v, --verbose       Enable verbose output"
+    echo -e "  -a, --auto          Auto-execute commands (dangerous!)"
+    echo -e "  -i, --interactive   Interactive mode (default)"
+    echo -e "  --history          Show command history"
+    echo -e "  --update           Update command database"
+    echo -e ""
+    echo -e "${CYAN}EXAMPLES:${NC}"
+    echo -e "  $0 \"scan network for devices\""
+    echo -e "  $0 \"check open ports on 192.168.1.100\""
+    echo -e "  $0 \"find log files in /var/log\""
+    echo -e "  $0 \"monitor network traffic on eth0\""
+    echo -e ""
+    echo -e "${CYAN}CATEGORIES:${NC}"
+    echo -e "  ${PURPLE}reconnaissance${NC} - Network scanning and discovery"
+    echo -e "  ${PURPLE}monitoring${NC}     - System and network monitoring"
+    echo -e "  ${PURPLE}security${NC}       - Security-related commands"
+    echo -e "  ${PURPLE}system${NC}         - System administration"
+    echo -e "  ${PURPLE}filesystem${NC}     - File and directory operations"
+    echo -e "  ${PURPLE}network${NC}        - Network configuration and status"
+}
+
+# Interactive mode
+interactive_mode() {
+    show_banner
+    echo -e "${DIM}Type 'help' for commands, 'exit' to quit${NC}\n"
+
+    while true; do
+        echo -e -n "${BOLD}${CYAN}turtle>${NC} "
+        read -r input
+
+        case "$input" in
+            "exit"|"quit"|"q")
+                echo -e "${GREEN}Goodbye!${NC}"
+                break
+                ;;
+            "help"|"h")
+                show_help
+                ;;
+            "history")
+                if [[ -f "$HISTORY_FILE" ]]; then
+                    echo -e "${CYAN}Command History:${NC}"
+                    tail -20 "$HISTORY_FILE" | while IFS='|' read -r timestamp query command; do
+                        echo -e "${DIM}$timestamp${NC} ${YELLOW}$query${NC} → ${GREEN}$command${NC}"
+                    done
+                else
+                    log_info "No history available"
+                fi
+                ;;
+            "clear")
+                clear
+                show_banner
+                ;;
+            "")
+                continue
+                ;;
+            *)
+                process_query "$input"
+                ;;
+        esac
+        echo
+    done
+}
+
+# Process natural language query
+process_query() {
+    local query="$1"
+
+    if [[ "$VERBOSE_MODE" == "true" ]]; then
+        log_info "Processing query: '$query' on $OS_TYPE"
+    fi
+
+    local match_result
+    if match_result=$(parse_intent "$query"); then
+        local platforms=$(echo "$match_result" | jq -c '.platforms')
+        local command_template=$(echo "$platforms" | jq -r --arg os "$OS_TYPE" '.[$os] // empty')
+
+        if [[ -z "$command_template" ]]; then
+            log_error "Command not supported on $OS_TYPE platform"
+            return 1
+        fi
+
+        local description=$(echo "$match_result" | jq -r '.description')
+        local category=$(echo "$match_result" | jq -r '.category')
+        local risk=$(echo "$match_result" | jq -r '.risk')
+        local params=$(echo "$match_result" | jq -c '.params')
+
+        local final_command
+        final_command=$(extract_parameters "$query" "$command_template" "$params")
+
+        display_command "$final_command" "$description" "$category" "$risk"
+
+        if [[ "$INTERACTIVE_MODE" == "true" ]]; then
+            execute_command "$final_command" "$risk"
+        else
+            echo -e "\n${GREEN}$final_command${NC}"
+        fi
+
+        add_to_history "$query" "$final_command"
+    else
+        log_error "No matching command found for: '$query'"
+        echo -e "${DIM}Try rephrasing your request or use 'help' for examples${NC}"
+        return 1
+    fi
+}
+
+# ASCII Art Banner
+show_banner() {
+    echo -e "${CYAN}${BOLD}"
+    cat << 'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║  ████████╗███████╗██████╗ ███╗   ███╗████████╗██╗   ██╗██████╗ ║
+║  ╚══██╔══╝██╔════╝██╔══██╗████╗ ████║╚══██╔══╝██║   ██║██╔══██╗║
+║     ██║   █████╗  ██████╔╝██╔████╔██║   ██║   ██║   ██║██████╔╝║
+║     ██║   ██╔══╝  ██╔══██╗██║╚██╔╝██║   ██║   ██║   ██║██╔══██╗║
+║     ██║   ███████╗██║  ██║██║ ╚═╝ ██║   ██║   ╚██████╔╝██║  ██║║
+║     ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝║
+║                                                                ║
+║        Cross-Platform Intelligent Shell v3.0.0                 ║
+║     Natural Language → Universal System Commands               ║
+║   Linux • BSD • macOS • Windows • PowerShell • CMD             ║
+╚════════════════════════════════════════════════════════════════╝
+EOF
+    echo -e "${NC}"
+    echo -e "${DIM}Detected: ${CYAN}$OS_TYPE${NC}${DIM} with ${CYAN}$SHELL_TYPE${NC}${DIM} shell and ${CYAN}$PACKAGE_MANAGER${NC}${DIM} package manager${NC}\n"
+}
+
+# Logging functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1" >&2
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1" >&2
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1" >&2
+}
+
+# Main function
+main() {
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -v|--verbose)
+                VERBOSE_MODE=true
+                shift
+                ;;
+            -a|--auto)
+                AUTO_EXECUTE=true
+                log_warn "Auto-execute mode enabled - commands will run without confirmation!"
+                shift
+                ;;
+            -i|--interactive)
+                INTERACTIVE_MODE=true
+                shift
+                ;;
+            --history)
+                if [[ -f "$HISTORY_FILE" ]]; then
+                    cat "$HISTORY_FILE"
+                else
+                    log_info "No history available"
+                fi
+                exit 0
+                ;;
+            --update)
+                log_info "Updating command database..."
+                rm -f "$COMMAND_DB"
+                init_command_db
+                log_success "Command database updated"
+                exit 0
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+            *)
+                # Remaining arguments are the query
+                INTERACTIVE_MODE=false
+                process_query "$*"
+                exit $?
+                ;;
+        esac
+    done
+
+    # Check dependencies
+    if ! command -v jq &> /dev/null; then
+        log_error "jq is required but not installed. Please install jq to continue."
+        exit 1
+    fi
+
+    # Initialize
+    init_command_db
+
+    # Start interactive mode if no query provided
+    if [[ "$INTERACTIVE_MODE" == "true" ]]; then
+        interactive_mode
+    else
+        show_help
+    fi
+}
+
+# Trap signals for clean exit
+trap 'echo -e "\n${YELLOW}Interrupted${NC}"; exit 130' INT TERM
+
+# Run main function
+main "$@"
