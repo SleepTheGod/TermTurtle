@@ -76,6 +76,7 @@ Command-Line Mode
 ./termturtle2.sh --update                   # Refresh command database
 
 Interactive Mode
+```bash
 $ ./termturtle2.sh -i
 ╔════════════════════════════════════════════════════════════════╗
 ║  ████████╗███████╗██████╗ ███╗   ███╗████████╗██╗   ██╗██████╗ ║
@@ -105,7 +106,7 @@ Flag                Description
 -i, --interactive   Launch interactive REPL (default if no query)
 --history           Display recent command history
 --update            Reinitialize the command database
-
+```
 For full help: ./termturtle2.sh --help
 
 Examples
