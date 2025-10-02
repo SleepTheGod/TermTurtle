@@ -1,0 +1,324 @@
+{
+  "commands": [
+    {
+      "intent": ["scan network", "network scan", "discover hosts", "find devices"],
+      "platforms": {
+        "linux": "nmap -sn {network}",
+        "macos": "nmap -sn {network}",
+        "freebsd": "nmap -sn {network}",
+        "openbsd": "nmap -sn {network}",
+        "netbsd": "nmap -sn {network}",
+        "windows": "nmap -sn {network}"
+      },
+      "description": "Discover live hosts on network",
+      "category": "reconnaissance",
+      "risk": "low",
+      "params": ["network"],
+      "examples": ["nmap -sn 192.168.1.0/24"]
+    },
+    {
+      "intent": ["port scan", "scan ports", "check open ports"],
+      "platforms": {
+        "linux": "nmap -sS -O {target}",
+        "macos": "nmap -sS -O {target}",
+        "freebsd": "nmap -sS -O {target}",
+        "openbsd": "nmap -sS -O {target}",
+        "netbsd": "nmap -sS -O {target}",
+        "windows": "nmap -sS -O {target}"
+      },
+      "description": "TCP SYN scan with OS detection",
+      "category": "reconnaissance",
+      "risk": "medium",
+      "params": ["target"],
+      "examples": ["nmap -sS -O 192.168.1.100"]
+    },
+    {
+      "intent": ["list files", "show files", "directory listing"],
+      "platforms": {
+        "linux": "ls -la {path}",
+        "macos": "ls -la {path}",
+        "freebsd": "ls -la {path}",
+        "openbsd": "ls -la {path}",
+        "netbsd": "ls -la {path}",
+        "windows": "dir {path} /a"
+      },
+      "description": "List directory contents with details",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["path"],
+      "examples": ["ls -la /home", "dir C:\\Users /a"]
+    },
+    {
+      "intent": ["check listening ports", "show open ports", "netstat ports"],
+      "platforms": {
+        "linux": "ss -tulpn",
+        "macos": "netstat -tulpn",
+        "freebsd": "netstat -tulpn",
+        "openbsd": "netstat -tulpn",
+        "netbsd": "netstat -tulpn",
+        "windows": "netstat -an"
+      },
+      "description": "Show listening ports and processes",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["ss -tulpn", "netstat -an"]
+    },
+    {
+      "intent": ["monitor network traffic", "capture packets", "sniff traffic"],
+      "platforms": {
+        "linux": "tcpdump -i {interface} -w {output}.pcap",
+        "macos": "tcpdump -i {interface} -w {output}.pcap",
+        "freebsd": "tcpdump -i {interface} -w {output}.pcap",
+        "openbsd": "tcpdump -i {interface} -w {output}.pcap",
+        "netbsd": "tcpdump -i {interface} -w {output}.pcap",
+        "windows": "netsh trace start capture=yes tracefile={output}.etl"
+      },
+      "description": "Capture network packets to file",
+      "category": "monitoring",
+      "risk": "medium",
+      "params": ["interface", "output"],
+      "examples": ["tcpdump -i eth0 -w capture.pcap", "netsh trace start capture=yes"]
+    },
+    {
+      "intent": ["find files", "search files", "locate file"],
+      "platforms": {
+        "linux": "find {path} -name '*{pattern}*' -type f",
+        "macos": "find {path} -name '*{pattern}*' -type f",
+        "freebsd": "find {path} -name '*{pattern}*' -type f",
+        "openbsd": "find {path} -name '*{pattern}*' -type f",
+        "netbsd": "find {path} -name '*{pattern}*' -type f",
+        "windows": "forfiles /p {path} /m *{pattern}* /c \"cmd /c echo @path\""
+      },
+      "description": "Search for files by name pattern",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["path", "pattern"],
+      "examples": ["find /home -name '*.log' -type f", "forfiles /p C:\\logs /m *.log"]
+    },
+    {
+      "intent": ["check disk usage", "disk space", "df"],
+      "platforms": {
+        "linux": "df -h",
+        "macos": "df -h",
+        "freebsd": "df -h",
+        "openbsd": "df -h",
+        "netbsd": "df -h",
+        "windows": "wmic logicaldisk get size,freespace,caption"
+      },
+      "description": "Show filesystem disk space usage",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["df -h", "wmic logicaldisk get size,freespace,caption"]
+    },
+    {
+      "intent": ["show processes", "list processes", "ps"],
+      "platforms": {
+        "linux": "ps aux --sort=-%cpu | head -20",
+        "macos": "ps aux | sort -k3 -nr | head -20",
+        "freebsd": "ps aux | sort -k3 -nr | head -20",
+        "openbsd": "ps aux | sort -k3 -nr | head -20",
+        "netbsd": "ps aux | sort -k3 -nr | head -20",
+        "windows": "tasklist /fo table | sort /r /+5"
+      },
+      "description": "Show top CPU-consuming processes",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["ps aux --sort=-%cpu", "tasklist /fo table"]
+    },
+    {
+      "intent": ["install package", "install software", "add package"],
+      "platforms": {
+        "linux": "{package_manager} install {package}",
+        "macos": "brew install {package}",
+        "freebsd": "pkg install {package}",
+        "openbsd": "pkg_add {package}",
+        "netbsd": "pkgin install {package}",
+        "windows": "winget install {package}"
+      },
+      "description": "Install software package",
+      "category": "system",
+      "risk": "medium",
+      "params": ["package"],
+      "examples": ["apt install vim", "brew install vim", "winget install vim"]
+    },
+    {
+      "intent": ["update system", "upgrade packages", "system update"],
+      "platforms": {
+        "linux": "{package_manager} update && {package_manager} upgrade",
+        "macos": "brew update && brew upgrade",
+        "freebsd": "pkg update && pkg upgrade",
+        "openbsd": "pkg_add -u",
+        "netbsd": "pkgin update && pkgin upgrade",
+        "windows": "winget upgrade --all"
+      },
+      "description": "Update system packages",
+      "category": "system",
+      "risk": "medium",
+      "params": [],
+      "examples": ["apt update && apt upgrade", "winget upgrade --all"]
+    },
+    {
+      "intent": ["check system info", "system information", "hardware info"],
+      "platforms": {
+        "linux": "uname -a && lscpu && free -h",
+        "macos": "system_profiler SPHardwareDataType",
+        "freebsd": "uname -a && sysctl hw",
+        "openbsd": "uname -a && sysctl hw",
+        "netbsd": "uname -a && sysctl hw",
+        "windows": "systeminfo"
+      },
+      "description": "Display system and hardware information",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["uname -a && lscpu", "systeminfo"]
+    },
+    {
+      "intent": ["check network config", "network configuration", "ip config"],
+      "platforms": {
+        "linux": "ip addr show",
+        "macos": "ifconfig",
+        "freebsd": "ifconfig",
+        "openbsd": "ifconfig",
+        "netbsd": "ifconfig",
+        "windows": "ipconfig /all"
+      },
+      "description": "Show network interface configuration",
+      "category": "network",
+      "risk": "low",
+      "params": [],
+      "examples": ["ip addr show", "ipconfig /all"]
+    },
+    {
+      "intent": ["ping host", "test connectivity", "ping test"],
+      "platforms": {
+        "linux": "ping -c 4 {target}",
+        "macos": "ping -c 4 {target}",
+        "freebsd": "ping -c 4 {target}",
+        "openbsd": "ping -c 4 {target}",
+        "netbsd": "ping -c 4 {target}",
+        "windows": "ping -n 4 {target}"
+      },
+      "description": "Test network connectivity to host",
+      "category": "network",
+      "risk": "low",
+      "params": ["target"],
+      "examples": ["ping -c 4 google.com", "ping -n 4 google.com"]
+    },
+    {
+      "intent": ["check firewall", "firewall status", "show firewall"],
+      "platforms": {
+        "linux": "ufw status verbose || iptables -L",
+        "macos": "pfctl -sr",
+        "freebsd": "pfctl -sr",
+        "openbsd": "pfctl -sr",
+        "netbsd": "pfctl -sr",
+        "windows": "netsh advfirewall show allprofiles"
+      },
+      "description": "Show firewall configuration and status",
+      "category": "security",
+      "risk": "low",
+      "params": [],
+      "examples": ["ufw status verbose", "netsh advfirewall show allprofiles"]
+    },
+    {
+      "intent": ["check logs", "view logs", "system logs"],
+      "platforms": {
+        "linux": "journalctl -f --since '{timeframe}' || tail -f /var/log/syslog",
+        "macos": "log show --predicate 'eventMessage contains \"error\"' --last {timeframe}",
+        "freebsd": "tail -f /var/log/messages",
+        "openbsd": "tail -f /var/log/messages",
+        "netbsd": "tail -f /var/log/messages",
+        "windows": "Get-EventLog -LogName System -Newest 50"
+      },
+      "description": "View system logs and events",
+      "category": "monitoring",
+      "risk": "low",
+      "params": ["timeframe"],
+      "examples": ["journalctl -f --since '1 hour ago'", "Get-EventLog -LogName System"]
+    },
+    {
+      "intent": ["compress files", "create archive", "zip files"],
+      "platforms": {
+        "linux": "tar -czf {output}.tar.gz {path}",
+        "macos": "tar -czf {output}.tar.gz {path}",
+        "freebsd": "tar -czf {output}.tar.gz {path}",
+        "openbsd": "tar -czf {output}.tar.gz {path}",
+        "netbsd": "tar -czf {output}.tar.gz {path}",
+        "windows": "Compress-Archive -Path {path} -DestinationPath {output}.zip"
+      },
+      "description": "Create compressed archive of files",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["path", "output"],
+      "examples": ["tar -czf backup.tar.gz /home/user", "Compress-Archive -Path C:\\Data"]
+    },
+    {
+      "intent": ["extract archive", "decompress files", "unzip files"],
+      "platforms": {
+        "linux": "tar -xzf {archive}",
+        "macos": "tar -xzf {archive}",
+        "freebsd": "tar -xzf {archive}",
+        "openbsd": "tar -xzf {archive}",
+        "netbsd": "tar -xzf {archive}",
+        "windows": "Expand-Archive -Path {archive} -DestinationPath ."
+      },
+      "description": "Extract compressed archive",
+      "category": "filesystem",
+      "risk": "low",
+      "params": ["archive"],
+      "examples": ["tar -xzf backup.tar.gz", "Expand-Archive -Path backup.zip"]
+    },
+    {
+      "intent": ["kill process", "terminate process", "stop process"],
+      "platforms": {
+        "linux": "kill -9 {pid}",
+        "macos": "kill -9 {pid}",
+        "freebsd": "kill -9 {pid}",
+        "openbsd": "kill -9 {pid}",
+        "netbsd": "kill -9 {pid}",
+        "windows": "taskkill /PID {pid} /F"
+      },
+      "description": "Forcefully terminate a process",
+      "category": "system",
+      "risk": "high",
+      "params": ["pid"],
+      "examples": ["kill -9 1234", "taskkill /PID 1234 /F"]
+    },
+    {
+      "intent": ["check memory usage", "memory info", "ram usage"],
+      "platforms": {
+        "linux": "free -h && cat /proc/meminfo",
+        "macos": "vm_stat && top -l 1 | grep PhysMem",
+        "freebsd": "vmstat -h && sysctl hw.physmem",
+        "openbsd": "vmstat && sysctl hw.physmem",
+        "netbsd": "vmstat && sysctl hw.physmem64",
+        "windows": "wmic OS get TotalVisibleMemorySize,FreePhysicalMemory /format:list"
+      },
+      "description": "Display memory usage information",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["free -h", "wmic OS get TotalVisibleMemorySize"]
+    },
+    {
+      "intent": ["check cpu usage", "cpu info", "processor info"],
+      "platforms": {
+        "linux": "lscpu && top -bn1 | grep 'Cpu(s)'",
+        "macos": "sysctl -n machdep.cpu.brand_string && top -l 1 | grep 'CPU usage'",
+        "freebsd": "sysctl hw.model && top -d1 | head -20",
+        "openbsd": "sysctl hw.model && top -d1 | head -20",
+        "netbsd": "sysctl hw.model && top -d1 | head -20",
+        "windows": "wmic cpu get name,numberofcores,maxclockspeed /format:list"
+      },
+      "description": "Display CPU information and usage",
+      "category": "system",
+      "risk": "low",
+      "params": [],
+      "examples": ["lscpu", "wmic cpu get name,numberofcores"]
+    }
+  ]
+}
