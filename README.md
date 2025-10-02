@@ -1,5 +1,6 @@
 # TermTurtle
-![Description of image](https://media.discordapp.net/attachments/1372788111230369834/1423456282844856442/image.png?width=1608&height=905)
+<img src="https://i.ibb.co/XZg380ZN/image-11.webp" alt="Screenshot" width="800">
+
 
 
 License: MIT
