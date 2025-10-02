@@ -1,8 +1,5 @@
 # TermTurtle
 <img src="https://i.ibb.co/XZg380ZN/image-11.webp" alt="Screenshot" width="800">
-
-
-
 License: MIT
 Shell: Bash
 Platform: Cross Platform
